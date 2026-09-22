@@ -1,6 +1,6 @@
 # Qiang (Nate) Zhang — Personal website
 
-Website: https://harokell.github.io/
+Website: https://qiangzhang-dev.github.io/
 
 A responsive, dependency-free personal website hosted on GitHub Pages.
 
