@@ -23,7 +23,7 @@
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 @media print{body{background:white;color:#111;font-size:11pt}.topbar,.toc,.mobile-toc,.skip,footer{display:none}.page{max-width:none;padding:0}.hero{padding-top:0}.layout{display:block}.prose h2{break-after:avoid}.prose figure,table{break-inside:avoid}.table-scroll{overflow:visible}a{color:inherit}.hero h1{font-size:25pt}}
 </style>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "AIR-Fusion：用扩散模型同时做图像恢复与融合", "description": "从冻结的恢复主干、跨模态桥接适配器 CMBA，到采样中的轨迹约束 TCR，解读 AIR-Fusion 如何结合文本指令完成红外与可见光图像恢复及融合。", "inLanguage": "zh-CN", "datePublished": "2026-09-22", "dateModified": "2026-09-22", "url": "https://qiangzhang-dev.github.io/notes/air-fusion/", "mainEntityOfPage": "https://qiangzhang-dev.github.io/notes/air-fusion/", "author": {"@type": "Person", "@id": "https://qiangzhang-dev.github.io/#person", "name": "Qiang (Nate) Zhang", "url": "https://qiangzhang-dev.github.io/"}, "image": "https://qiangzhang-dev.github.io/air-fusion/assets/framework.webp", "citation": "https://doi.org/10.24963/ijcai.2026/105"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "AIR-Fusion：用扩散模型同时做图像恢复与融合", "description": "从冻结的恢复主干、跨模态桥接适配器 CMBA，到采样中的轨迹约束 TCR，解读 AIR-Fusion 如何结合文本指令完成红外与可见光图像恢复及融合。", "inLanguage": "zh-CN", "datePublished": "2026-09-22", "dateModified": "2026-09-24", "url": "https://qiangzhang-dev.github.io/notes/air-fusion/", "mainEntityOfPage": "https://qiangzhang-dev.github.io/notes/air-fusion/", "author": {"@type": "Person", "@id": "https://qiangzhang-dev.github.io/#person", "name": "Qiang (Nate) Zhang", "url": "https://qiangzhang-dev.github.io/"}, "image": "https://qiangzhang-dev.github.io/air-fusion/assets/framework.webp", "citation": "https://doi.org/10.24963/ijcai.2026/105"}</script>
 </head>
 <body>
 <a class="skip" href="#content">跳至正文</a>
@@ -32,11 +32,11 @@
 <header class="hero">
 <div class="eyebrow">研究笔记 · IJCAI 2026</div>
 <h1>AIR-Fusion：<br><span style="white-space:nowrap">用扩散模型</span><wbr><span style="white-space:nowrap">同时做图像恢复与融合</span></h1>
-<p class="deck">从恢复先验到多模态条件，拆解 CMBA 与 TCR 的设计及实验结果。</p>
+<p class="deck">为什么冻结恢复主干，红外信息怎样接入，TCR 又在哪一步起作用。</p>
 <div class="byline"><a href="/" rel="author">Qiang (Nate) Zhang</a><span aria-hidden="true">/</span><time datetime="2026-09-22">2026 年 9 月 22 日</time><span aria-hidden="true">/</span><span>中文论文解读</span></div>
 <nav class="resources" aria-label="论文资源"><a href="https://www.ijcai.org/proceedings/2026/0105.pdf">阅读论文 ↗</a><a href="/air-fusion/">项目与实验结果 ↗</a><a href="https://github.com/qiangzhang-dev/AIR-Fusion">GitHub ↗</a></nav>
 </header>
-<details class="mobile-toc"><summary>本文目录</summary><nav aria-label="文章目录"><a href="#backbone">为什么保留预训练的恢复主干</a><a href="#cmba">CMBA：让红外信息参与生成</a><a href="#tcr">TCR：在采样中保留源图像结构</a><a href="#results">一套参数，五类退化</a><a href="#interaction">文本指令如何改变恢复结果</a><a href="#discussion">当前边界与研究启发</a><a href="#reference">论文与联系</a></nav></details>
+<details class="mobile-toc"><summary>本文目录</summary><nav aria-label="文章目录"><a href="#backbone">为什么保留预训练的恢复主干</a><a href="#cmba">CMBA：让红外信息参与生成</a><a href="#tcr">TCR：在采样中保留源图像结构</a><a href="#results">一套参数，五类退化</a><a href="#interaction">文本指令如何改变恢复结果</a><a href="#discussion">局限</a><a href="#reference">论文与联系</a></nav></details>
 <div class="layout">
 <article id="content" class="prose" aria-label="AIR-Fusion 中文论文解读">
 <p>红外图像能突出热目标，可见光图像提供纹理和颜色。把两者融合，是希望在一张图里保留互补信息。但当可见光图像有雾、雨、噪声，或者本身就很暗、很模糊时，融合也可能把退化一起带入结果。</p>
@@ -46,7 +46,7 @@
 <p>图像恢复希望去掉退化，图像融合希望保留不同传感器的互补信息。这两个目标有关联，但并不相同。</p>
 <p>一个恢复效果很好的生成模型，不一定知道应该如何使用红外输入。另一方面，从有限融合数据上训练出来的模型，也不一定能处理训练之外的复杂天气和退化。</p>
 <p>AIR-Fusion 使用 AutoDIR 的潜空间扩散主干，并在训练中冻结主干参数。需要学习的是接入新条件、校正融合结果的模块。这样，适配过程可以利用已有的恢复先验，而不必在有限的融合数据上重新学习整套恢复能力。</p>
-<p>这项工作的出发点是：能否通过条件适配，把已经学到的恢复能力用于融合，同时尽量保留源图像中的真实信息？</p>
+<p>冻结主干之后，接下来要解决的是怎样把红外信息送进去，以及怎样保住源图像的细节。</p>
 <h2 id="cmba">CMBA：让红外信息参与生成</h2>
 <figure><a href="https://qiangzhang-dev.github.io/air-fusion/assets/framework.webp" aria-label="查看大图：论文 Figure 2：AIR-Fusion 整体框架"><img src="https://qiangzhang-dev.github.io/air-fusion/assets/framework.webp" alt="论文 Figure 2：AIR-Fusion 整体框架" width="2016" height="1136" loading="lazy"></a><figcaption>图 2 · 论文原始框架，见<a href="https://www.ijcai.org/proceedings/2026/0105.pdf#page=3">论文第 3 页</a>。</figcaption></figure>
 <p>CMBA 的全称是 Cross-Modal Bridging Adapter，即跨模态桥接适配器。可以先把它理解成一个接入红外条件的可训练分支。</p>
@@ -58,7 +58,7 @@
 <p>生成结果看起来清楚，并不等于源图像中的结构都被保留了。对融合任务来说，热目标、物体边缘和细节是否忠实于输入，同样重要。</p>
 <p>潜空间扩散模型的 VAE 压缩可能损失高频信息，迭代采样也可能使结果偏离源图像结构。为此，我们引入了 TCR，也就是 Trajectory-Constrained Rectifier，轨迹约束校正器。</p>
 <p>在一个采样步骤里，模型先估计干净潜变量，把它解码为当前的融合预测。TCR 同时参考这个预测、退化可见光和红外图像，对结果进行校正。校正后的图像重新编码到潜空间，参与下一步采样。</p>
-<p>这里重要的是“校正后再进入采样”。TCR 嵌在生成循环中，能够连续约束后续轨迹，而不只是给最终结果再做一次锐化。</p>
+<p>TCR 的校正结果会进入下一步采样，因此它会影响后续生成过程。</p>
 <p>表 2 的消融提供了相应证据：与移除 TCR 的版本相比，完整模型的 VIF 从 0.87 升到 1.04，QAB/F 从 0.57 升到 0.76，PSNR 从 29.01 升到 29.99。不过，去掉颜色损失的版本具有更高的 PSNR，所以不能仅凭单个指标判断最终融合质量。</p>
 <h2 id="results">一套参数，五类退化</h2>
 <p>模型只在 LLVIP 上训练，定量测试覆盖 LLVIP，以及未参与训练的 MSRS 和 RoadScene。模糊、雾、低照度、雨和噪声使用同一套模型参数，不需要针对每种退化重新训练。</p>
@@ -71,17 +71,16 @@
 <p>当输入同时有雾和模糊时，“把图像变清楚”其实可以指不同的事情。</p>
 <p>论文图 6 展示了一个例子：给出去雾指令，模型主要减轻雾，而模糊特征大体保留；给出去模糊指令，模型主要恢复局部清晰度，而不会同等程度地去掉雾。</p>
 <figure><a href="https://qiangzhang-dev.github.io/air-fusion/assets/interaction.webp" aria-label="查看大图：论文 Figure 6：文本引导与复合退化样例"><img src="https://qiangzhang-dev.github.io/air-fusion/assets/interaction.webp" alt="论文 Figure 6：文本引导与复合退化样例" width="1225" height="885" loading="lazy"></a><figcaption>图 6 · 文本引导的恢复结果。除了复合退化，图中还展示了低分辨率恢复和自然语言去雾指令的效果。这些样例表明，文本可以帮助选择恢复动作；更广泛的指令理解与未知退化泛化能力，还需要系统评测。</figcaption></figure>
-<h2 id="discussion">当前边界与研究启发</h2>
+<h2 id="discussion">局限</h2>
 <p>这项工作的主要评测对象是可见光侧退化。红外图像也受损、两种模态同时退化、图像配准不准时会怎样，都还需要进一步研究。</p>
 <p>效率也是实际问题。论文报告，在 RTX A6000 上使用 100 步去噪，推理耗时为 11.397 秒，可训练参数为 0.361B。这一速度距离实时应用仍有差距。冻结主干减少了需要更新的参数，但扩散采样的计算成本仍然存在。</p>
-<p>这项工作提供了一个值得继续探索的思路：利用已有模型的恢复能力，通过条件适配进入新的融合任务，同时在生成过程中保留与源图像的联系。CMBA 让红外与文本条件参与生成，TCR 则持续用源图像校正采样轨迹。两者解决的是不同层面的问题，也共同决定了最终结果的质量。</p>
 <p>论文、原始框架图和实验结果已公开。代码与模型权重暂未公开。</p>
 <h2 id="reference">论文与联系</h2>
 <p>Bing Cao, <strong>Qiang Zhang</strong>†, Xingxin Xu, Pengfei Zhu. <em>Interactive All-in-One Image Restoration and Fusion</em>. IJCAI 2026, pp. 935–943.<br>† First student author（学生一作）；作者顺序与正式论文一致。</p>
 <ul><li><a href="https://www.ijcai.org/proceedings/2026/105">正式出版页面</a></li><li><a href="https://www.ijcai.org/proceedings/2026/0105.pdf">论文 PDF</a></li><li><a href="https://qiangzhang-dev.github.io/air-fusion/">项目页</a></li><li><a href="https://github.com/qiangzhang-dev/AIR-Fusion">GitHub 仓库</a></li><li><a href="https://qiangzhang-dev.github.io/">个人主页</a></li><li>交流与联系：<a href="mailto:zhangqiang_c@outlook.com">zhangqiang_c@outlook.com</a></li></ul>
 <p class="endnote">本文是作者对已发表研究的中文解读。图表与数值均来自论文，技术细节以正式出版版本为准。</p>
 </article>
-<aside class="toc" aria-label="文章目录"><p class="toc-label">本文目录</p><nav><a href="#backbone">为什么保留预训练的恢复主干</a><a href="#cmba">CMBA：让红外信息参与生成</a><a href="#tcr">TCR：在采样中保留源图像结构</a><a href="#results">一套参数，五类退化</a><a href="#interaction">文本指令如何改变恢复结果</a><a href="#discussion">当前边界与研究启发</a><a href="#reference">论文与联系</a></nav></aside>
+<aside class="toc" aria-label="文章目录"><p class="toc-label">本文目录</p><nav><a href="#backbone">为什么保留预训练的恢复主干</a><a href="#cmba">CMBA：让红外信息参与生成</a><a href="#tcr">TCR：在采样中保留源图像结构</a><a href="#results">一套参数，五类退化</a><a href="#interaction">文本指令如何改变恢复结果</a><a href="#discussion">局限</a><a href="#reference">论文与联系</a></nav></aside>
 </div>
 </main>
 <footer><span>© 2026 Qiang (Nate) Zhang</span><span><a href="/#writing">返回文章列表</a> · <a href="#content">回到正文 ↑</a></span></footer>
